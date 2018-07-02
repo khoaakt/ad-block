@@ -6,7 +6,6 @@
 #include "./ad_block_client_wrap.h"
 #include <node_buffer.h>
 #include <algorithm>
-#include <fstream>
 #include "./bad_fingerprint.h"
 #include "./data_file_version.h"
 #include "./filter_list.h"
@@ -39,7 +38,7 @@ AdBlockClientWrap::AdBlockClientWrap() {
 AdBlockClientWrap::~AdBlockClientWrap() {
 }
 
-Local<Object> ToLocalObject(Isolate* isolate, const FilterList& filter_list) {
+Local<Object> ToLocalObject(Isolate* isolate, FilterList filter_list) {
   Local<Object> list = Object::New(isolate);
   list->Set(String::NewFromUtf8(isolate, "uuid"),
     String::NewFromUtf8(isolate, filter_list.uuid.c_str()));
@@ -49,10 +48,6 @@ Local<Object> ToLocalObject(Isolate* isolate, const FilterList& filter_list) {
     String::NewFromUtf8(isolate, filter_list.title.c_str()));
   list->Set(String::NewFromUtf8(isolate, "supportURL"),
     String::NewFromUtf8(isolate, filter_list.support_url.c_str()));
-  list->Set(String::NewFromUtf8(isolate, "componentID"),
-    String::NewFromUtf8(isolate, filter_list.component_id.c_str()));
-  list->Set(String::NewFromUtf8(isolate, "base64PublicKey"),
-    String::NewFromUtf8(isolate, filter_list.base64_public_key.c_str()));
 
   Local<Array> langs = Array::New(isolate);
   int j = 0;
@@ -76,21 +71,6 @@ Local<Array> ToLocalObject(Isolate* isolate,
     lists->Set(j++, ToLocalObject(isolate, filter_list));
   });
   return lists;
-}
-
-void GenerateManifestFile(const std::string &name,
-                          const std::string &base64_public_key,
-                          const std::string &filename) {
-  std::ofstream outFile(filename);
-  if (outFile.is_open()) {
-    outFile << "{" << std::endl;
-    outFile << "  \"description\": \"Brave Ad Block Updater extension\"," << std::endl;
-    outFile << "  \"key\": \"" << base64_public_key << "\"," << std::endl;
-    outFile << "  \"manifest_version\": 2," << std::endl;
-    outFile << "  \"name\": \"Brave Ad Block Updater (" << name << ")\"," << std::endl;
-    outFile << "  \"version\": \"0.0.0\"" << std::endl;
-    outFile << "}" << std::endl;
-  }
 }
 
 void AdBlockClientWrap::Init(Local<Object> exports) {
@@ -122,10 +102,6 @@ void AdBlockClientWrap::Init(Local<Object> exports) {
     AdBlockClientWrap::EnableBadFingerprintDetection);
   NODE_SET_PROTOTYPE_METHOD(tpl, "generateBadFingerprintsHeader",
     AdBlockClientWrap::GenerateBadFingerprintsHeader);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "generateDefaultManifestFile",
-    AdBlockClientWrap::GenerateDefaultManifestFile);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "generateRegionalManifestFiles",
-    AdBlockClientWrap::GenerateRegionalManifestFiles);
   NODE_SET_PROTOTYPE_METHOD(tpl, "cleanup", AdBlockClientWrap::Cleanup);
 
   // filter options
@@ -208,8 +184,7 @@ void AdBlockClientWrap::Clear(const FunctionCallbackInfo<Value>& args) {
 }
 
 void AdBlockClientWrap::Parse(const FunctionCallbackInfo<Value>& args) {
-  Isolate* isolate = args.GetIsolate();
-  String::Utf8Value str(isolate, args[0]->ToString());
+  String::Utf8Value str(args[0]->ToString());
   const char * buffer = *str;
 
   AdBlockClientWrap* obj =
@@ -219,10 +194,10 @@ void AdBlockClientWrap::Parse(const FunctionCallbackInfo<Value>& args) {
 
 void AdBlockClientWrap::Matches(const FunctionCallbackInfo<Value>& args) {
   Isolate* isolate = args.GetIsolate();
-  String::Utf8Value str(isolate, args[0]->ToString());
+  String::Utf8Value str(args[0]->ToString());
   const char * buffer = *str;
   int32_t filterOption = static_cast<FilterOption>(args[1]->Int32Value());
-  String::Utf8Value currentPageDomain(isolate, args[2]->ToString());
+  String::Utf8Value currentPageDomain(args[2]->ToString());
   const char * currentPageDomainBuffer = *currentPageDomain;
 
   AdBlockClientWrap* obj =
@@ -237,10 +212,10 @@ void AdBlockClientWrap::Matches(const FunctionCallbackInfo<Value>& args) {
 void AdBlockClientWrap::FindMatchingFilters(
     const FunctionCallbackInfo<Value>& args) {
   Isolate* isolate = args.GetIsolate();
-  String::Utf8Value str(isolate, args[0]->ToString());
+  String::Utf8Value str(args[0]->ToString());
   const char * buffer = *str;
   int32_t filterOption = static_cast<FilterOption>(args[1]->Int32Value());
-  String::Utf8Value currentPageDomain(isolate, args[2]->ToString());
+  String::Utf8Value currentPageDomain(args[2]->ToString());
   const char * currentPageDomainBuffer = *currentPageDomain;
 
   Filter *matchingFilter;
@@ -255,7 +230,7 @@ void AdBlockClientWrap::FindMatchingFilters(
   foundData->Set(String::NewFromUtf8(isolate, "matches"),
     Boolean::New(isolate, matches));
   if (matchingFilter) {
-    foundData->Set(String::NewFromUtf8(isolate, "matchingFilter"),
+    foundData->Set(String::NewFromUtf8(isolate, "machingFilter"),
       String::NewFromUtf8(isolate, matchingFilter->data));
   }
   if (matchingExceptionFilter) {
@@ -352,7 +327,7 @@ void AdBlockClientWrap::GetFilters(
   AdBlockClientWrap* obj =
     ObjectWrap::Unwrap<AdBlockClientWrap>(args.Holder());
 
-  String::Utf8Value str(isolate, args[0]->ToString());
+  String::Utf8Value str(args[0]->ToString());
   const char * filterType = *str;
 
   Local<v8::Array> result_list = v8::Array::New(isolate);
@@ -485,7 +460,7 @@ void AdBlockClientWrap::GetFingerprint(
   Isolate* isolate = args.GetIsolate();
   AdBlockClientWrap* obj =
     ObjectWrap::Unwrap<AdBlockClientWrap>(args.Holder());
-  String::Utf8Value str(isolate, args[0]->ToString());
+  String::Utf8Value str(args[0]->ToString());
   const char * inputBuffer = *str;
 
   char * fingerprintBuffer = new char[AdBlockClient::kFingerprintSize + 1];
@@ -525,32 +500,11 @@ void AdBlockClientWrap::EnableBadFingerprintDetection(
 
 void AdBlockClientWrap::GenerateBadFingerprintsHeader(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
-  Isolate* isolate = args.GetIsolate();
-  String::Utf8Value str(isolate, args[0]->ToString());
+  String::Utf8Value str(args[0]->ToString());
   const char * filename = *str;
   AdBlockClientWrap* obj =
     ObjectWrap::Unwrap<AdBlockClientWrap>(args.Holder());
   obj->badFingerprintsHashSet->generateHeader(filename);
-}
-
-void AdBlockClientWrap::GenerateDefaultManifestFile(
-    const v8::FunctionCallbackInfo<v8::Value>& args) {
-  Isolate* isolate = args.GetIsolate();
-  String::Utf8Value str(isolate, args[0]->ToString());
-  const char * dir = *str;
-  std::string filename = dir + std::string("/default-manifest.json");
-  GenerateManifestFile("Default", kAdBlockDefaultBase64PublicKey, filename);
-}
-
-void AdBlockClientWrap::GenerateRegionalManifestFiles(
-    const v8::FunctionCallbackInfo<v8::Value>& args) {
-  Isolate* isolate = args.GetIsolate();
-  String::Utf8Value str(isolate, args[0]->ToString());
-  const char * dir = *str;
-  for (auto& entry : region_lists) {
-    std::string filename = dir + std::string("/") + entry.uuid + std::string("-manifest.json");
-    GenerateManifestFile(entry.title, entry.base64_public_key, filename);
-  }
 }
 
 void AdBlockClientWrap::Cleanup(const FunctionCallbackInfo<Value>& args) {
@@ -565,4 +519,3 @@ void AdBlockClientWrap::Cleanup(const FunctionCallbackInfo<Value>& args) {
 }
 
 }  // namespace ad_block_client_wrap
-
